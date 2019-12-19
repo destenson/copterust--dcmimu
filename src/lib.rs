@@ -1,4 +1,4 @@
-//! no_std implementation of Heikki Hyyti and Arto Visala DCM-IMU algorithm.
+//! Implementation of Heikki Hyyti and Arto Visala DCM-IMU algorithm.
 //! """The DCM-IMU algorithm is designed for fusing low-cost triaxial MEMS
 //! gyroscope and accelerometer measurements. An extended Kalman filter is used
 //! to estimate attitude in direction cosine matrix (DCM) formation and
@@ -9,35 +9,31 @@
 //!
 //! # Usage
 //! ```
-//! # Create DCMIMU:
+//! // Create DCMIMU:
 //! let mut dcmimu = DCMIMU::new();
 //! let mut prev_t_ms = now();
 //! loop {
-//!     # get gyroscope and accelerometer measurement from your sensors:
+//!     // get gyroscope and accelerometer measurement from your sensors:
 //!     let gyro = sensor.read_gyro();
 //!     let accel = sensor.read_accel();
-//!     # Convert measurements to SI if needed.
-//!     # Get time difference since last update:
+//!     // Convert measurements to SI if needed.
+//!     // Get time difference since last update:
 //!     let t_ms = now();
-//!     let dt_ms = t_ms - prev_t_ms
-//!     prev_t_ms = t_ms
-//!     # Update dcmimu states (don't forget to use SI):
+//!     let dt_ms = t_ms - prev_t_ms;
+//!     prev_t_ms = t_ms;
+//!     // Update dcmimu states (don't forget to use SI):
 //!     let (dcm, _gyro_biases) = dcmimu.update((gyro.x, gyro.y, gyro.z),
 //!                             (accel.x, accel.y, accel.z),
 //!                             dt_ms.seconds());
 //!     println!("Roll: {}; yaw: {}; pitch: {}", dcm.roll, dcm.yaw, dcm.pitch);
-//!     # Measurements can also be queried without updating:
+//!     // Measurements can also be queried without updating:
 //!     println!("{:?} == {}, {}, {}", dcmimu.all(), dcmimu.roll(), dcmimu.yaw(), dcmimu.pitch());
 //! }
 //! ```
 //!
 
-#![no_std]
 #![allow(non_snake_case)]
-#![deny(warnings)]
-
-extern crate libm;
-use libm::{asinf, atan2f, cosf, sinf, sqrtf};
+// #![deny(warnings)]
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 pub struct DCMIMU {
@@ -407,7 +403,7 @@ impl DCMIMU {
         let y0 = ax - self.g0 * x_0;
         let y1 = ay - self.g0 * x_1;
         let y2 = az - self.g0 * x_2;
-        let a_len = sqrtf(y0 * y0 + y1 * y1 + y2 * y2);
+        let a_len = (y0 * y0 + y1 * y1 + y2 * y2).sqrt();
 
         let S00 = self.r_acc2 + a_len * self.r_a2 + P_00 * self.g0_2;
         let S01 = P_01 * self.g0_2;
@@ -902,7 +898,7 @@ impl DCMIMU {
                     + K51 * (K50 * P_01 + K51 * P_11 + K52 * P_21)
                     + K52 * (K50 * P_02 + K51 * P_12 + K52 * P_22));
 
-        let len = sqrtf(self.x0 * self.x0 + self.x1 * self.x1 + self.x2 * self.x2);
+        let len = (self.x0 * self.x0 + self.x1 * self.x1 + self.x2 * self.x2).sqrt();
         let invlen3 = 1.0 / (len * len * len);
         let invlen32 = invlen3 * invlen3;
 
@@ -1035,9 +1031,9 @@ impl DCMIMU {
         // compute Euler angles
         let u_nb1 = gy - self.x4;
         let u_nb2 = gz - self.x5;
-        let cy = cosf(self.yaw);
-        let sy = sinf(self.yaw);
-        let d = sqrtf(x_last[1] * x_last[1] + x_last[2] * x_last[2]);
+        let cy = self.yaw.cos();
+        let sy = self.yaw.sin();
+        let d = (x_last[1] * x_last[1] + x_last[2] * x_last[2]).sqrt();
         let d_inv = 1.0 / d;
         // compute needed parts of rotation matrix R (state and angle based version, equivalent with the commented version above)
         let R11 = cy * d;
@@ -1051,9 +1047,9 @@ impl DCMIMU {
         let R11_new = R11 + dt * (u_nb2 * R12 - u_nb1 * R13);
         let R21_new = R21 + dt * (u_nb2 * R22 - u_nb1 * R23);
 
-        self.yaw = atan2f(R21_new, R11_new);
-        self.pitch = asinf(-self.x0);
-        self.roll = atan2f(self.x1, self.x2);
+        self.yaw = R21_new.atan2(R11_new);
+        self.pitch = (-self.x0).asin();
+        self.roll = self.x1.atan2(self.x2);
 
         // save the estimated non-gravitational acceleration
         self.a0 = ax - self.x0 * self.g0;
@@ -1121,4 +1117,43 @@ pub struct GyroBiases {
     pub y: f32,
     /// Z
     pub z: f32,
+}
+
+#[cfg(test)]
+extern crate assert_approx_eq;
+
+#[cfg(test)]
+mod test {
+    use assert_approx_eq::assert_approx_eq;
+    use super::*;
+
+    #[test]
+    fn test_dcmimu() {
+        let mut imu = DCMIMU::new();
+        let (angles, biases) = imu.update((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 0.1);
+        // println!("{:?}", (angles, biases));
+        assert_approx_eq!(angles.yaw, 0.0);
+        assert_approx_eq!(angles.pitch, 0.0);
+        assert_approx_eq!(angles.roll, 0.0);
+        assert_approx_eq!(biases.x, 0.0);
+        assert_approx_eq!(biases.y, 0.0);
+        assert_approx_eq!(biases.z, 0.0);
+        let (angles, biases) = imu.update((1.0, 1.0, 1.0), (0.0, 0.0, 1.0), 0.1);
+        // println!("{:?}", (angles, biases));
+        assert_approx_eq!(angles.yaw, 0.09966865);
+        assert_approx_eq!(angles.pitch, 0.09707784);
+        assert_approx_eq!(angles.roll, 0.09941855);
+        assert_approx_eq!(biases.x, 0.000010778602);
+        assert_approx_eq!(biases.y, 0.000012483812);
+        assert_approx_eq!(biases.z, 0.0);
+        let (angles, biases) = imu.update((-1.0, -1.0, 1.0), (0.0, 0.0, 1.0), 0.1);
+        // println!("{:?}", (angles, biases));
+        assert_approx_eq!(angles.yaw, 0.18848975);
+        assert_approx_eq!(angles.pitch, -0.01092247);
+        assert_approx_eq!(angles.roll, 0.008423367);
+        assert_approx_eq!(biases.x, 0.0000039451306);
+        assert_approx_eq!(biases.y, 0.00000031830314);
+        assert_approx_eq!(biases.z, 0.00000020673964);
+        // assert!(false);
+    }
 }

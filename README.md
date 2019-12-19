@@ -2,13 +2,9 @@
 
 > An algorithm for fusing low-cost triaxial MEMS gyroscope and accelerometer measurements.
 
-A `no_std` Rust port of [the original](https://github.com/hhyyti/dcm-imu).
+A Rust port of [the original](https://github.com/hhyyti/dcm-imu).
 
 [![Build Status](https://travis-ci.org/copterust/dcmimu.svg?branch=master)](https://travis-ci.org/copterust/dcmimu)
-
-*NOTE*: `libm` still [doesn't work with overflow checks](https://github.com/japaric/libm/issues/4),
-so you have to compile your project with `--release`.
-Leave a comment in the linked issue to [raise awareness](https://www.youtube.com/watch?v=KbZIFZm204E).
 
 ## Credentials
 
